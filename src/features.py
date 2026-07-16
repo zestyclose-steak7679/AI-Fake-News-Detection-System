@@ -1,110 +1,141 @@
-import pandas as pd
-import numpy as np
+"""
+features.py
+------------
+Feature extraction methods for the fake news classifier:
+  1. manual_bag_of_words   - hand-rolled BoW (satisfies "from scratch" requirement)
+  2. build_tfidf_features  - production TF-IDF via sklearn (used for actual modeling)
+  3. build_word2vec_features - optional embedding-based representation (gensim)
+
+Usage (as a library):
+    from features import manual_bag_of_words, build_tfidf_features
+
+Usage (standalone demo):
+    python src/features.py
+"""
+
 import os
-from sklearn.feature_extraction.text import TfidfVectorizer
 import pickle
+import numpy as np
+import pandas as pd
 from collections import Counter
+from sklearn.feature_extraction.text import TfidfVectorizer
 
-def build_vocabulary(texts, max_features=None):
-    """
-    Builds a vocabulary from scratch for manual Bag-of-Words.
-    """
-    word_counts = Counter()
-    for text in texts:
-        if isinstance(text, str):
-            words = text.split()
-            word_counts.update(words)
+PROCESSED_DIR = os.path.join("data", "processed")
+MODELS_DIR = os.path.join("outputs", "models")
 
-    # Sort by frequency
-    if max_features:
-        most_common = word_counts.most_common(max_features)
-        vocab = {word: i for i, (word, _) in enumerate(most_common)}
-    else:
-        vocab = {word: i for i, word in enumerate(word_counts.keys())}
 
+# ---------------------------------------------------------------------------
+# 1. Manual Bag-of-Words (from scratch, no CountVectorizer)
+# ---------------------------------------------------------------------------
+def build_vocabulary(tokenized_docs, max_features=2000):
+    """Builds a vocabulary of the top-N most frequent words across all docs."""
+    counter = Counter()
+    for doc in tokenized_docs:
+        counter.update(doc)
+    most_common = counter.most_common(max_features)
+    vocab = {word: idx for idx, (word, _) in enumerate(most_common)}
     return vocab
 
-def manual_bag_of_words(texts, vocab):
+
+def manual_bag_of_words(tokenized_docs, vocab=None, max_features=2000):
     """
-    Manual Bag-of-Words implementation (word count dictionary to vector).
+    Builds a Bag-of-Words matrix by hand: for each document, count occurrences
+    of each vocabulary word. Returns (matrix, vocab).
+
+    tokenized_docs: list of lists of tokens, e.g. [["fake", "news", ...], ...]
+    Note: intentionally O(n_docs * n_vocab) and unoptimized -- this is meant to
+    demonstrate the mechanics for the report/appendix, not to scale to the
+    full dataset. Use build_tfidf_features() for actual model training.
     """
-    vectors = np.zeros((len(texts), len(vocab)))
+    if vocab is None:
+        vocab = build_vocabulary(tokenized_docs, max_features=max_features)
 
-    for i, text in enumerate(texts):
-        if isinstance(text, str):
-            words = text.split()
-            for word in words:
-                if word in vocab:
-                    vectors[i, vocab[word]] += 1
+    n_docs = len(tokenized_docs)
+    n_vocab = len(vocab)
+    matrix = np.zeros((n_docs, n_vocab), dtype=np.int32)
 
-    return vectors
+    for i, doc in enumerate(tokenized_docs):
+        counts = Counter(doc)
+        for word, count in counts.items():
+            if word in vocab:
+                matrix[i, vocab[word]] = count
 
-def extract_features(processed_dir='data/processed', output_dir='outputs/models'):
-    print("Starting feature extraction...")
+    return matrix, vocab
 
-    input_path = os.path.join(processed_dir, 'processed_data.csv')
-    df = pd.read_csv(input_path)
 
-    # Fill NAs
-    df['cleaned_text'] = df['cleaned_text'].fillna('')
-    texts = df['cleaned_text'].tolist()
-    labels = df['label'].values
+# ---------------------------------------------------------------------------
+# 2. TF-IDF (production feature set used for actual training)
+# ---------------------------------------------------------------------------
+def build_tfidf_features(texts, max_features=5000, ngram_range=(1, 2), save=True):
+    """Fits a TfidfVectorizer on the given texts and returns (X, vectorizer)."""
+    vectorizer = TfidfVectorizer(max_features=max_features, ngram_range=ngram_range)
+    X = vectorizer.fit_transform(texts)
 
-    print("1. Testing manual Bag-of-Words (from scratch)...")
-    # Use a small subset for demonstration if data is large
-    sample_texts = texts[:min(len(texts), 100)]
-    vocab = build_vocabulary(sample_texts, max_features=100)
-    bow_matrix = manual_bag_of_words(sample_texts, vocab)
-    print(f"Manual BoW matrix shape for subset: {bow_matrix.shape}")
+    if save:
+        os.makedirs(MODELS_DIR, exist_ok=True)
+        with open(os.path.join(MODELS_DIR, "tfidf_vectorizer.pkl"), "wb") as f:
+            pickle.dump(vectorizer, f)
 
-    print("2. Building production TF-IDF pipeline...")
-    # TfidfVectorizer for production (unigrams + bigrams, max 5000 features)
-    tfidf_vectorizer = TfidfVectorizer(max_features=5000, ngram_range=(1,2))
-    X_tfidf = tfidf_vectorizer.fit_transform(texts)
+    return X, vectorizer
 
-    print(f"TF-IDF matrix shape: {X_tfidf.shape}")
 
-    # Save the vectorizer
-    os.makedirs(output_dir, exist_ok=True)
-    vectorizer_path = os.path.join(output_dir, 'tfidf_vectorizer.pkl')
-    with open(vectorizer_path, 'wb') as f:
-        pickle.dump(tfidf_vectorizer, f)
-
-    # Save extracted features
-    features_path = os.path.join(processed_dir, 'features_tfidf.npz')
-    from scipy.sparse import save_npz
-    save_npz(features_path, X_tfidf)
-
-    # Save labels array
-    labels_path = os.path.join(processed_dir, 'labels.npy')
-    np.save(labels_path, labels)
-
-    print("Saved vectorizer and extracted features.")
-
-    # Optional: Word2Vec (Bonus)
+# ---------------------------------------------------------------------------
+# 3. Word2Vec embeddings (optional, for the "with proper expansion" comparison)
+# ---------------------------------------------------------------------------
+def build_word2vec_features(tokenized_docs, vector_size=100, window=5, min_count=2):
+    """
+    Trains a Word2Vec model on the corpus and represents each document as the
+    mean of its word vectors. Requires gensim (pip install gensim).
+    """
     try:
         from gensim.models import Word2Vec
-        print("3. Building Word2Vec embeddings (Optional bonus)...")
-        tokenized_texts = [text.split() for text in texts]
-        w2v_model = Word2Vec(sentences=tokenized_texts, vector_size=100, window=5, min_count=1, workers=4)
+    except ImportError as e:
+        raise ImportError(
+            "gensim is required for Word2Vec features. Install with: "
+            "pip install gensim"
+        ) from e
 
-        # Create document vectors by averaging word vectors
-        w2v_features = np.zeros((len(texts), 100))
-        for i, text in enumerate(tokenized_texts):
-            vectors = [w2v_model.wv[word] for word in text if word in w2v_model.wv]
-            if vectors:
-                w2v_features[i] = np.mean(vectors, axis=0)
+    model = Word2Vec(
+        sentences=tokenized_docs,
+        vector_size=vector_size,
+        window=window,
+        min_count=min_count,
+        workers=4,
+        seed=42,
+    )
 
-        print(f"Word2Vec features shape: {w2v_features.shape}")
+    def doc_vector(tokens):
+        vecs = [model.wv[t] for t in tokens if t in model.wv]
+        if not vecs:
+            return np.zeros(vector_size)
+        return np.mean(vecs, axis=0)
 
-        # Save w2v features
-        w2v_features_path = os.path.join(processed_dir, 'features_w2v.npy')
-        np.save(w2v_features_path, w2v_features)
-        print("Saved Word2Vec features.")
-    except ImportError:
-        print("Gensim not installed, skipping Word2Vec option.")
+    doc_vectors = np.array([doc_vector(doc) for doc in tokenized_docs])
+    return doc_vectors, model
 
-    return X_tfidf, labels
+
+# ---------------------------------------------------------------------------
+# Standalone demo
+# ---------------------------------------------------------------------------
+def main():
+    clean_path = os.path.join(PROCESSED_DIR, "clean_data.csv")
+    if not os.path.exists(clean_path):
+        print(f"Run preprocess.py first -- {clean_path} not found.")
+        return
+
+    df = pd.read_csv(clean_path)
+    sample_df = df.sample(n=min(500, len(df)), random_state=42)  # keep demo fast
+    tokenized_docs = sample_df["clean_text"].str.split().tolist()
+
+    print("Building manual Bag-of-Words on a 500-doc sample (demo only)...")
+    bow_matrix, vocab = manual_bag_of_words(tokenized_docs, max_features=200)
+    print(f"Manual BoW matrix shape: {bow_matrix.shape}")
+    print("Top 10 vocab words:", list(vocab.keys())[:10])
+
+    print("\nBuilding TF-IDF on full cleaned dataset...")
+    X_tfidf, vectorizer = build_tfidf_features(df["clean_text"].tolist())
+    print(f"TF-IDF matrix shape: {X_tfidf.shape}")
+
 
 if __name__ == "__main__":
-    extract_features()
+    main()
