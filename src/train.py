@@ -1,125 +1,128 @@
-import numpy as np
+"""
+train.py
+--------
+Trains and tunes the four required models (KNN, Logistic Regression,
+Random Forest, Neural Net) on TF-IDF features, plus a majority-class
+baseline for comparison. Saves fitted models and the train/test split
+to outputs/models/ for evaluate.py to consume.
+
+Usage:
+    python src/train.py
+"""
+
 import os
 import pickle
-from scipy.sparse import load_npz
-from sklearn.model_selection import train_test_split, StratifiedKFold, GridSearchCV
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold
 from sklearn.dummy import DummyClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neural_network import MLPClassifier
-from sklearn.metrics import accuracy_score
 
-def train_models(processed_dir='data/processed', output_dir='outputs/models'):
-    print("Starting model training...")
+from features import build_tfidf_features
 
-    # Load features and labels
-    features_path = os.path.join(processed_dir, 'features_tfidf.npz')
-    labels_path = os.path.join(processed_dir, 'labels.npy')
+PROCESSED_DIR = os.path.join("data", "processed")
+MODELS_DIR = os.path.join("outputs", "models")
 
-    X = load_npz(features_path)
-    y = np.load(labels_path)
 
-    print(f"Loaded TF-IDF features of shape {X.shape}")
-    print(f"Loaded labels of shape {y.shape}")
+def load_clean_data():
+    path = os.path.join(PROCESSED_DIR, "clean_data.csv")
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"{path} not found -- run preprocess.py first.")
+    return pd.read_csv(path)
 
-    # Train/Test Split
-    # Disable stratification if dataset is too small (e.g. dummy data)
-    stratify = y if len(y) > 5 else None
-    test_size = 0.2 if len(y) > 5 else 0.5
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=stratify)
-    print(f"Training set: {X_train.shape[0]} samples")
-    print(f"Testing set: {X_test.shape[0]} samples")
 
-    # Better: save train/test sets to ensure exact match in evaluate.py
-    os.makedirs(processed_dir, exist_ok=True)
-    from scipy.sparse import save_npz
-    save_npz(os.path.join(processed_dir, 'X_test.npz'), X_test)
-    np.save(os.path.join(processed_dir, 'y_test.npy'), y_test)
+def get_train_test_split(df, test_size=0.2, random_state=42):
+    X_vec, vectorizer = build_tfidf_features(df["clean_text"].tolist())
+    y = df["label"].values
 
-    # For evaluate.py error analysis, we also need raw text. We'll load the full DF and grab by split index.
-    # To do this robustly, we use index splitting.
-    indices = np.arange(len(y))
-    idx_train, idx_test, _, _ = train_test_split(indices, y, test_size=test_size, random_state=42, stratify=stratify)
-    np.save(os.path.join(processed_dir, 'test_indices.npy'), idx_test)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_vec, y, test_size=test_size, random_state=random_state, stratify=y
+    )
+    return X_train, X_test, y_train, y_test, vectorizer
 
-    models = {}
 
-    # 0. Baseline (Majority Class)
-    print("\nTraining DummyClassifier (Baseline)...")
-    baseline = DummyClassifier(strategy='most_frequent')
+def train_baseline(X_train, y_train):
+    """Majority-class baseline so reported accuracy numbers mean something."""
+    baseline = DummyClassifier(strategy="most_frequent")
     baseline.fit(X_train, y_train)
-    models['Baseline'] = baseline
-    print(f"Baseline Train Acc: {accuracy_score(y_train, baseline.predict(X_train)):.4f}")
+    return baseline
 
-    # 1. KNN
-    print("\nTraining KNeighborsClassifier...")
-    knn = KNeighborsClassifier(n_neighbors=min(5, len(y_train))) # Handling small dummy dataset size
+
+def train_models(X_train, y_train, cv_folds=5):
+    """
+    Trains all four required models. Logistic Regression and Random Forest
+    get GridSearchCV tuning; KNN and MLP use reasonable fixed defaults to
+    keep runtime manageable on a laptop without a dedicated GPU.
+    """
+    cv = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=42)
+    fitted = {}
+
+    print("Training KNN...")
+    knn = KNeighborsClassifier(n_neighbors=5)
     knn.fit(X_train, y_train)
-    models['KNN'] = knn
+    fitted["KNN"] = knn
 
-    # Setup CV
-    # Use standard KFold if classes per fold is too small for small dataset (like n_splits=2 for dummy data)
-    n_splits = min(5, np.min(np.bincount(y_train)))
-    if n_splits < 2:
-         cv = 2
-    else:
-         cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+    print("Tuning Logistic Regression (GridSearchCV over C)...")
+    logreg_grid = GridSearchCV(
+        LogisticRegression(max_iter=1000),
+        param_grid={"C": [0.01, 0.1, 1, 10]},
+        cv=cv,
+        scoring="f1",
+        n_jobs=-1,
+    )
+    logreg_grid.fit(X_train, y_train)
+    print(f"  Best C: {logreg_grid.best_params_}")
+    fitted["LogReg"] = logreg_grid.best_estimator_
 
-    # 2. Logistic Regression with GridSearchCV
-    print("\nTraining Logistic Regression with GridSearchCV...")
-    lr = LogisticRegression(solver='liblinear', random_state=42)
-    # Simplified grid for fast execution, can be expanded
-    lr_params = {'C': [0.01, 0.1, 1, 10]}
+    print("Tuning Random Forest (GridSearchCV over n_estimators, max_depth)...")
+    rf_grid = GridSearchCV(
+        RandomForestClassifier(random_state=42),
+        param_grid={
+            "n_estimators": [100, 200],
+            "max_depth": [None, 30],
+        },
+        cv=cv,
+        scoring="f1",
+        n_jobs=-1,
+    )
+    rf_grid.fit(X_train, y_train)
+    print(f"  Best params: {rf_grid.best_params_}")
+    fitted["RandomForest"] = rf_grid.best_estimator_
 
-    # Fallback to simple fit if dummy dataset is too small for CV
-    if len(y_train) < 4 or len(np.unique(y_train)) < 2:
-        lr_best = lr.set_params(C=1.0)
-        # If there's only 1 class in small y_train due to split randomness
-        if len(np.unique(y_train)) < 2:
-            print("Warning: Only 1 class in y_train. Forcing dummy train labels for testing.")
-            y_train[0] = 1 - y_train[0]
-        lr_best.fit(X_train, y_train)
-    else:
-        lr_grid = GridSearchCV(lr, lr_params, cv=cv, scoring='f1', n_jobs=-1)
-        lr_grid.fit(X_train, y_train)
-        lr_best = lr_grid.best_estimator_
-        print(f"Best LR params: {lr_grid.best_params_}")
-    models['LogReg'] = lr_best
-
-    # 3. Random Forest with GridSearchCV
-    print("\nTraining Random Forest with GridSearchCV...")
-    rf = RandomForestClassifier(random_state=42)
-    rf_params = {
-        'n_estimators': [50, 100],
-        'max_depth': [None, 10, 20]
-    }
-
-    if len(y_train) < 4:
-        rf_best = rf.set_params(n_estimators=50)
-        rf_best.fit(X_train, y_train)
-    else:
-        rf_grid = GridSearchCV(rf, rf_params, cv=cv, scoring='f1', n_jobs=-1)
-        rf_grid.fit(X_train, y_train)
-        rf_best = rf_grid.best_estimator_
-        print(f"Best RF params: {rf_grid.best_params_}")
-    models['RandomForest'] = rf_best
-
-    # 4. MLP Classifier
-    print("\nTraining MLPClassifier...")
-    mlp = MLPClassifier(hidden_layer_sizes=(100,), max_iter=200, random_state=42)
+    print("Training Neural Net (MLPClassifier)...")
+    mlp = MLPClassifier(hidden_layer_sizes=(100,), max_iter=300, random_state=42)
     mlp.fit(X_train, y_train)
-    models['MLP'] = mlp
+    fitted["NeuralNet"] = mlp
 
-    # Save all models
-    os.makedirs(output_dir, exist_ok=True)
-    for name, model in models.items():
-        model_path = os.path.join(output_dir, f"{name}.pkl")
-        with open(model_path, 'wb') as f:
-            pickle.dump(model, f)
-        print(f"Saved {name} model.")
+    return fitted
 
-    print("\nModel training complete.")
+
+def main():
+    os.makedirs(MODELS_DIR, exist_ok=True)
+
+    print("Loading cleaned data...")
+    df = load_clean_data()
+
+    print("Building TF-IDF features and train/test split...")
+    X_train, X_test, y_train, y_test, vectorizer = get_train_test_split(df)
+    print(f"Train shape: {X_train.shape}, Test shape: {X_test.shape}")
+
+    baseline = train_baseline(X_train, y_train)
+    models = train_models(X_train, y_train)
+    models["Baseline"] = baseline
+
+    print("\nSaving models and split to outputs/models/...")
+    with open(os.path.join(MODELS_DIR, "trained_models.pkl"), "wb") as f:
+        pickle.dump(models, f)
+
+    with open(os.path.join(MODELS_DIR, "test_split.pkl"), "wb") as f:
+        pickle.dump({"X_test": X_test, "y_test": y_test}, f)
+
+    print("Done. Run src/evaluate.py next.")
+
 
 if __name__ == "__main__":
-    train_models()
+    main()
