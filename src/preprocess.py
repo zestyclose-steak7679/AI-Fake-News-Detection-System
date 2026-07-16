@@ -1,119 +1,165 @@
-import pandas as pd
-import numpy as np
-import re
+"""
+preprocess.py
+-------------
+Loads raw Fake/True news CSVs, cleans text, and builds a manual (from-scratch)
+tokenizer alongside NLTK-based lemmatization for the production pipeline.
+
+Expected input files (Kaggle "Fake and Real News Dataset"):
+    data/raw/Fake.csv
+    data/raw/True.csv
+Each should have at least a 'text' (or 'title'+'text') column.
+
+Usage:
+    python src/preprocess.py
+"""
+
 import os
+import re
+import string
+import pandas as pd
 import nltk
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
-import sys
 
-def manual_tokenize(text):
+RAW_DIR = os.path.join("data", "raw")
+PROCESSED_DIR = os.path.join("data", "processed")
+
+# ---------------------------------------------------------------------------
+# NLTK setup (safe to re-run; downloads are cached after first call)
+# ---------------------------------------------------------------------------
+def ensure_nltk_resources():
+    resources = ["stopwords", "wordnet", "omw-1.4"]
+    for res in resources:
+        try:
+            nltk.data.find(f"corpora/{res}")
+        except LookupError:
+            nltk.download(res, quiet=True)
+
+
+# ---------------------------------------------------------------------------
+# Loading
+# ---------------------------------------------------------------------------
+def load_raw_data(raw_dir=RAW_DIR):
+    """Loads Fake.csv and True.csv, adds labels, concatenates, and shuffles."""
+    fake_path = os.path.join(raw_dir, "Fake.csv")
+    true_path = os.path.join(raw_dir, "True.csv")
+
+    if not (os.path.exists(fake_path) and os.path.exists(true_path)):
+        raise FileNotFoundError(
+            f"Expected Fake.csv and True.csv in {raw_dir}. "
+            "Download the Kaggle 'Fake and Real News Dataset' and place them there."
+        )
+
+    fake_df = pd.read_csv(fake_path)
+    true_df = pd.read_csv(true_path)
+
+    fake_df["label"] = 0  # 0 = fake
+    true_df["label"] = 1  # 1 = real
+
+    df = pd.concat([fake_df, true_df], ignore_index=True)
+
+    # Combine title + text if both exist, for a richer signal
+    if "title" in df.columns and "text" in df.columns:
+        df["content"] = df["title"].fillna("") + " " + df["text"].fillna("")
+    elif "text" in df.columns:
+        df["content"] = df["text"].fillna("")
+    else:
+        raise ValueError("Could not find a 'text' column in the dataset.")
+
+    df = df[["content", "label"]].dropna().reset_index(drop=True)
+    df = df.sample(frac=1, random_state=42).reset_index(drop=True)  # shuffle
+    return df
+
+
+# ---------------------------------------------------------------------------
+# Manual tokenizer (satisfies the "from scratch" requirement in the brief)
+# ---------------------------------------------------------------------------
+def manual_tokenize(text: str):
     """
-    Manual tokenization without pre-built solutions (e.g. nltk.word_tokenize)
-    as per requirements.
-    Uses regex to split by whitespace and non-word characters.
+    A hand-rolled tokenizer: no nltk.word_tokenize call.
+    Splits on whitespace after normalizing punctuation spacing.
     """
-    # Simple split by word boundaries
-    tokens = re.findall(r'\b\w+\b', text)
+    # Add spaces around punctuation so it splits cleanly, then split on whitespace
+    text = re.sub(r"([\"'.,!?;:()\[\]{}])", r" \1 ", text)
+    tokens = text.split()
     return tokens
 
-def clean_text(text):
-    """
-    Cleans a text string by removing HTML, URLs, punctuation, numbers, and stopwords.
-    Then lemmatizes the remaining tokens.
-    """
+
+# ---------------------------------------------------------------------------
+# Cleaning pipeline
+# ---------------------------------------------------------------------------
+_URL_RE = re.compile(r"https?://\S+|www\.\S+")
+_HTML_RE = re.compile(r"<.*?>")
+_NON_ALPHA_RE = re.compile(r"[^a-zA-Z\s]")
+_EMOJI_RE = re.compile(
+    "["
+    "\U0001F600-\U0001F64F"
+    "\U0001F300-\U0001F5FF"
+    "\U0001F680-\U0001F6FF"
+    "\U0001F1E0-\U0001F1FF"
+    "]+",
+    flags=re.UNICODE,
+)
+
+
+def clean_text(text: str, use_manual_tokenizer: bool = False) -> str:
+    """Lowercases, strips HTML/URLs/emojis/punctuation/numbers, removes stopwords,
+    and lemmatizes. Returns a cleaned string ready for vectorization."""
     if not isinstance(text, str):
         return ""
 
-    # Lowercase
     text = text.lower()
+    text = _HTML_RE.sub(" ", text)
+    text = _URL_RE.sub(" ", text)
+    text = _EMOJI_RE.sub(" ", text)
+    text = _NON_ALPHA_RE.sub(" ", text)  # drops punctuation AND numbers
+    text = re.sub(r"\s+", " ", text).strip()
 
-    # Remove HTML tags
-    text = re.sub(r'<[^>]*>', '', text)
+    tokens = manual_tokenize(text) if use_manual_tokenizer else text.split()
 
-    # Remove URLs
-    text = re.sub(r'http[s]?://\S+', '', text)
-
-    # Remove punctuation and numbers
-    text = re.sub(r'[^a-z\s]', ' ', text)
-
-    # Tokenize manually
-    tokens = manual_tokenize(text)
-
-    # Remove stopwords and lemmatize
-    stop_words = set(stopwords.words('english'))
+    stop_words = set(stopwords.words("english"))
     lemmatizer = WordNetLemmatizer()
 
-    cleaned_tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in stop_words]
+    cleaned_tokens = [
+        lemmatizer.lemmatize(tok) for tok in tokens
+        if tok not in stop_words and len(tok) > 1
+    ]
 
-    return ' '.join(cleaned_tokens)
+    return " ".join(cleaned_tokens)
 
-def load_and_preprocess(raw_dir='data/raw', processed_dir='data/processed'):
-    print("Starting preprocessing...")
 
-    fake_path = os.path.join(raw_dir, 'Fake.csv')
-    true_path = os.path.join(raw_dir, 'True.csv')
-
-    # Check if files exist, else use dummy data for testing
-    if not os.path.exists(fake_path) or not os.path.exists(true_path):
-        print("Warning: Real dataset not found in data/raw. Using dummy data for end-to-end testing.")
-
-        # Create dummy data
-        dummy_fake = pd.DataFrame({
-            'title': ['Fake news title 1', 'Shocking fake story'],
-            'text': ['This is a completely made up story with a url http://fake.com.', 'Wow! Unbelievable fake event!'],
-            'subject': ['News', 'Politics'],
-            'date': ['2023-01-01', '2023-01-02']
-        })
-        dummy_true = pd.DataFrame({
-            'title': ['Real news title 1', 'Boring real story'],
-            'text': ['The government passed a new bill today. 100% verified.', 'Stocks closed higher this afternoon.'],
-            'subject': ['Politics', 'News'],
-            'date': ['2023-01-01', '2023-01-02']
-        })
-
-        df_fake = dummy_fake
-        df_true = dummy_true
-    else:
-        print("Loading real dataset...")
-        df_fake = pd.read_csv(fake_path)
-        df_true = pd.read_csv(true_path)
-
-    # Add labels
-    df_fake['label'] = 0 # 0 for Fake
-    df_true['label'] = 1 # 1 for True
-
-    # Concatenate and shuffle
-    df = pd.concat([df_fake, df_true], ignore_index=True)
-    df = df.sample(frac=1, random_state=42).reset_index(drop=True)
-
-    print(f"Total articles: {len(df)}")
-    print(f"Class distribution:\n{df['label'].value_counts()}")
-
-    # Fill NA values just in case
-    df['text'] = df['text'].fillna('')
-    df['title'] = df['title'].fillna('')
-
-    # Combine title and text for features
-    df['full_text'] = df['title'] + " " + df['text']
-
-    print("Cleaning text...")
-    df['cleaned_text'] = df['full_text'].apply(clean_text)
-
-    # Save processed data
-    output_path = os.path.join(processed_dir, 'processed_data.csv')
-    df.to_csv(output_path, index=False)
-    print(f"Saved processed data to {output_path}")
-
+def preprocess_dataframe(df: pd.DataFrame, text_col: str = "content") -> pd.DataFrame:
+    ensure_nltk_resources()
+    df = df.copy()
+    df["clean_text"] = df[text_col].apply(clean_text)
+    df = df[df["clean_text"].str.len() > 0].reset_index(drop=True)
     return df
 
-if __name__ == "__main__":
-    # Ensure nltk resources are downloaded
-    try:
-        nltk.data.find('corpora/stopwords')
-        nltk.data.find('corpora/wordnet')
-    except LookupError:
-        nltk.download('stopwords')
-        nltk.download('wordnet')
 
-    load_and_preprocess()
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+def main():
+    os.makedirs(PROCESSED_DIR, exist_ok=True)
+
+    print("Loading raw data...")
+    df = load_raw_data()
+    print(f"Loaded {len(df)} rows. Label distribution:\n{df['label'].value_counts()}")
+
+    print("Cleaning and lemmatizing text (this can take a minute)...")
+    df = preprocess_dataframe(df)
+
+    out_path = os.path.join(PROCESSED_DIR, "clean_data.csv")
+    df.to_csv(out_path, index=False)
+    print(f"Saved cleaned dataset to {out_path} ({len(df)} rows)")
+
+    # Quick demo of the manual tokenizer vs cleaned output, for the report appendix
+    sample = df["content"].iloc[0]
+    print("\n--- Manual tokenizer demo (first row) ---")
+    print("Raw snippet   :", sample[:150])
+    print("Manual tokens :", manual_tokenize(sample.lower())[:20])
+    print("Final cleaned :", df["clean_text"].iloc[0][:150])
+
+
+if __name__ == "__main__":
+    main()
