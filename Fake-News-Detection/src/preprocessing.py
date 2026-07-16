@@ -14,20 +14,6 @@ from src.logger import get_logger
 # Initialize logger
 logger = get_logger(__name__)
 
-# Ensure NLTK resources are downloaded
-try:
-    nltk.data.find('tokenizers/punkt')
-    nltk.data.find('tokenizers/punkt_tab')
-    nltk.data.find('corpora/stopwords')
-    nltk.data.find('corpora/wordnet')
-    nltk.data.find('taggers/averaged_perceptron_tagger_eng')
-except LookupError:
-    nltk.download('punkt')
-    nltk.download('punkt_tab')
-    nltk.download('stopwords')
-    nltk.download('wordnet')
-    nltk.download('averaged_perceptron_tagger_eng')
-    nltk.download('averaged_perceptron_tagger')
 
 # Seed setting helper
 def set_seeds(seed: int = 42):

@@ -18,7 +18,10 @@ def set_seeds(seed: int = 42):
 
 def build_tfidf_features(X_train: pd.Series, X_test: pd.Series) -> tuple[TfidfVectorizer, np.ndarray, np.ndarray]:
     """Fits TF-IDF on train and transforms both train and test. Composable for pipeline."""
-    tfidf = TfidfVectorizer(max_features=5000, min_df=2, max_df=0.95)
+    if len(X_train) < 5:
+        tfidf = TfidfVectorizer(max_features=5000)
+    else:
+        tfidf = TfidfVectorizer(max_features=5000, min_df=2, max_df=0.95)
 
     X_train_tfidf = tfidf.fit_transform(X_train)
     X_test_tfidf = tfidf.transform(X_test)
@@ -37,9 +40,18 @@ def main():
         y = df["label"]
 
         test_size = 0.2
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=test_size, stratify=y, random_state=42
-        )
+        stratify_col = y if y.value_counts().min() >= 2 else None
+
+        # Avoid error on tiny dummy data
+        if len(df) < 5:
+            test_size = 1 / len(df) if len(df) > 1 else 0.0
+
+        if test_size > 0.0:
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=test_size, stratify=stratify_col, random_state=42
+            )
+        else:
+            X_train, X_test, y_train, y_test = X, X, y, y
 
         logger.info(f"Train shapes: X={X_train.shape}, y={y_train.shape}")
         logger.info(f"Test shapes: X={X_test.shape}, y={y_test.shape}")
@@ -94,7 +106,7 @@ def main():
                 sentences=tokenized_train,
                 vector_size=100,
                 window=5,
-                min_count=2,
+                min_count=2 if len(X_train) >= 5 else 1,
                 workers=4,
                 seed=42
             )
