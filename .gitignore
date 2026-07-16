@@ -1,0 +1,32 @@
+# Environment files
+venv/
+env/
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE files
+.vscode/
+.idea/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data and Artifacts (Exclude all files in these directories, but keep the directories themselves)
+data/raw/*
+!data/raw/.gitkeep
+
+data/processed/*
+!data/processed/.gitkeep
+
+outputs/models/*
+!outputs/models/.gitkeep
+
+outputs/figures/*
+!outputs/figures/.gitkeep
+
+outputs/metrics/*
+!outputs/metrics/.gitkeep
