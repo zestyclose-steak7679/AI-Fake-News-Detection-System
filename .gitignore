@@ -16,8 +16,7 @@ __pycache__/
 .ipynb_checkpoints/
 
 # Data and Artifacts (Exclude all files in these directories, but keep the directories themselves)
-data/raw/*
-!data/raw/.gitkeep
+
 
 data/processed/*
 !data/processed/.gitkeep
