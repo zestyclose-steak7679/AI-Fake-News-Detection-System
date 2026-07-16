@@ -17,14 +17,11 @@ from src.config import CLEANED_TRAIN_DATA_PATH, PREPROCESSED_TRAIN_DATA_PATH
 # Initialize logger
 logger = get_logger(__name__)
 
- fix-pipeline-implementation-12119849575071646015
 # Preload resources
 lemmatizer = WordNetLemmatizer()
 stop_words = set(stopwords.words('english'))
 exceptions = {"not", "no", "nor", "never"}
 stop_words = stop_words - exceptions
-
- implement-pipeline-16979291744340150157
 
 def set_seeds(seed: int = 42):
     """Sets random seeds for reproducibility."""
@@ -51,9 +48,23 @@ def get_wordnet_pos(treebank_tag: str) -> str:
     else:
         return wordnet.NOUN
 
+def normalize_text(text: str) -> str:
+    """
+    Normalizes unicode, emojis, and specific characters.
+    """
+    text = emoji.replace_emoji(text, replace='')
+    text = text.replace('€', 'currency')
+    text = text.replace('—', ' ')
+    return text
+
 def preprocess(text: str) -> str:
     """
     Orchestrates the full preprocessing pipeline.
+
+    Order: normalize -> expand_contractions -> lowercase ->
+    remove_urls/html/emails/numbers/punctuation -> collapse whitespace ->
+    tokenize -> POS-tag on full sequence -> lemmatize using POS tags ->
+    remove_stopwords -> rejoin.
 
     Args:
         text (str): Input raw text.
@@ -64,45 +75,27 @@ def preprocess(text: str) -> str:
         return ""
     text = str(text)
 
-    # Emoji parsing (constraint: '😊' not in clean, should remove)
-    text = emoji.replace_emoji(text, replace='')
-
-    # Expand contractions
+    text = normalize_text(text)
     text = contractions.fix(text)
-
-    # Lowercase
     text = text.lower()
 
-    # Remove Currency / specific characters (constraint: currency -> 'currency' or stripped, let's keep it simple)
-    text = text.replace('€', 'currency')
-
-    # Remove em-dash
-    text = text.replace('—', ' ')
-
-    # Remove URLs, HTML, emails, numbers
     text = re.sub(r'http\S+|www\.\S+', '', text)
     text = re.sub(r'<.*?>', '', text)
     text = re.sub(r'\S+@\S+', '', text)
     text = re.sub(r'\d+', '', text)
-
-    # Remove punctuation
     text = text.translate(str.maketrans('', '', string.punctuation))
 
-    # Remove extra spaces
     text = re.sub(r'\s+', ' ', text).strip()
 
     if not text:
         return ""
 
-    # Tokenize
     tokens = word_tokenize(text)
 
-    # Remove stopwords
-    tokens = [word for word in tokens if word not in stop_words]
-
-    # Lemmatize with POS
     pos_tags = nltk.pos_tag(tokens)
     tokens = [lemmatizer.lemmatize(word, get_wordnet_pos(tag)) for word, tag in pos_tags]
+
+    tokens = [word for word in tokens if word not in stop_words]
 
     return " ".join(tokens)
 

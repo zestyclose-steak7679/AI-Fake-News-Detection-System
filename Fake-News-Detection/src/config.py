@@ -16,10 +16,13 @@ PREPROCESSED_TRAIN_DATA_PATH = PROCESSED_DATA_DIR / "preprocessed_train.csv"
 # Models and Outputs paths
 MODELS_DIR = BASE_DIR / "models"
 VECTORIZERS_DIR = MODELS_DIR / "vectorizers"
+CLASSIFIERS_DIR = MODELS_DIR / "classifiers"
 
 OUTPUTS_DIR = BASE_DIR / "outputs"
 GRAPHS_DIR = OUTPUTS_DIR / "graphs"
 FEATURES_DIR = OUTPUTS_DIR / "features"
+METRICS_DIR = OUTPUTS_DIR / "metrics"
+EXPERIMENTS_DIR = METRICS_DIR / "experiments"
 
 LOGS_DIR = BASE_DIR / "logs"
 PROJECT_LOG = LOGS_DIR / "project.log"
@@ -27,6 +30,9 @@ PROJECT_LOG = LOGS_DIR / "project.log"
 # Ensure directories exist
 PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
 VECTORIZERS_DIR.mkdir(parents=True, exist_ok=True)
+CLASSIFIERS_DIR.mkdir(parents=True, exist_ok=True)
 GRAPHS_DIR.mkdir(parents=True, exist_ok=True)
 FEATURES_DIR.mkdir(parents=True, exist_ok=True)
+METRICS_DIR.mkdir(parents=True, exist_ok=True)
+EXPERIMENTS_DIR.mkdir(parents=True, exist_ok=True)
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
