@@ -1,0 +1,11 @@
+id,title,author,text,label
+1,Fake Title 1,Author A,This is fake news text with a typo dont trust it.,1
+2,Real Title 1,Author B,Here is some real news. It is very factual.,0
+3,Fake Title 2,Author C,Weird text here—with emojis 😊 and € currency.,1
+4,Real Title 2,Author D,"I don't know why, but I am not happy, and I will never go there. No way!",0
+5,Empty Text,," ",1
+6,Fake Title 3,Author E,Fake news is everywhere these days.,1
+7,Real Title 3,Author F,This is a very informative real article.,0
+8,Fake Title 4,Author G,Another fake text for testing purposes.,1
+9,Real Title 4,Author H,Real news about the economy.,0
+10,Fake Title 5,Author I,Just some more text to fill the batch.,1

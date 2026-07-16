@@ -1,0 +1,16 @@
+pandas
+numpy
+scikit-learn
+nltk
+contractions
+gensim
+pytest
+black
+isort
+flake8
+ruff
+matplotlib
+seaborn
+joblib
+wordcloud
+emoji
