@@ -1,3 +1,21 @@
+ fix-pipeline-implementation-12119849575071646015
+pandas
+numpy
+scikit-learn
+nltk
+contractions
+gensim
+pytest
+black
+isort
+flake8
+ruff
+matplotlib
+seaborn
+joblib
+wordcloud
+emoji
+
 altair==6.2.2
 anyascii==0.3.3
 anyio==4.14.2
@@ -157,3 +175,4 @@ websockets==16.1
 widgetsnbextension==4.0.15
 wordcloud==1.9.6
 wrapt==2.2.2
+ implement-pipeline-16979291744340150157

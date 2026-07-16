@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+logs/
+models/vectorizers/*.pkl
+models/vectorizers/*.json
+outputs/graphs/*.png
+outputs/features/*.txt
+data/processed/*.csv
+!data/processed/.gitkeep

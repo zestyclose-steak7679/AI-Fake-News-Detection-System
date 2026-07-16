@@ -7,7 +7,9 @@ from datetime import datetime
 import sklearn
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
+
 from src.logger import get_logger
+from src.config import PREPROCESSED_TRAIN_DATA_PATH, VECTORIZERS_DIR, FEATURES_DIR
 
 logger = get_logger(__name__)
 
@@ -18,21 +20,77 @@ def set_seeds(seed: int = 42):
 
 def build_tfidf_features(X_train: pd.Series, X_test: pd.Series) -> tuple[TfidfVectorizer, np.ndarray, np.ndarray]:
     """Fits TF-IDF on train and transforms both train and test. Composable for pipeline."""
+ fix-pipeline-implementation-12119849575071646015
+    tfidf = TfidfVectorizer(max_features=5000, min_df=2, max_df=0.95)
+
     if len(X_train) < 5:
         tfidf = TfidfVectorizer(max_features=5000)
     else:
         tfidf = TfidfVectorizer(max_features=5000, min_df=2, max_df=0.95)
 
+ implement-pipeline-16979291744340150157
     X_train_tfidf = tfidf.fit_transform(X_train)
     X_test_tfidf = tfidf.transform(X_test)
     return tfidf, X_train_tfidf, X_test_tfidf
 
 def main():
     set_seeds()
-    logger.info("Starting feature engineering pipeline.")
-
-    input_path = "data/processed/preprocessed_train.csv"
+    logger.info("Starting feature engineering phase...")
     try:
+ fix-pipeline-implementation-12119849575071646015
+        df = pd.read_csv(PREPROCESSED_TRAIN_DATA_PATH)
+    except FileNotFoundError as e:
+        logger.error(f"File not found: {PREPROCESSED_TRAIN_DATA_PATH}")
+        raise e
+
+    X = df["clean_text"]
+    y = df["label"]
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, stratify=y, random_state=42
+    )
+
+    logger.info(f"Train shapes: X={X_train.shape}, y={y_train.shape}")
+    logger.info(f"Test shapes: X={X_test.shape}, y={y_test.shape}")
+    logger.info(f"Train class balance:\n{y_train.value_counts(normalize=True).to_dict()}")
+    logger.info(f"Test class balance:\n{y_test.value_counts(normalize=True).to_dict()}")
+
+    tfidf, X_train_tfidf, X_test_tfidf = build_tfidf_features(X_train, X_test)
+
+    # Save model
+    joblib.dump(tfidf, VECTORIZERS_DIR / "tfidf.pkl")
+
+    # Save metadata
+    params = tfidf.get_params()
+    for k, v in params.items():
+        if type(v) == type:
+            params[k] = str(v)
+
+    metadata = {
+        "params": params,
+        "n_features": len(tfidf.vocabulary_),
+        "sklearn_version": sklearn.__version__,
+        "created_at": datetime.now().isoformat()
+    }
+    with open(VECTORIZERS_DIR / "tfidf_metadata.json", "w") as f:
+        json.dump(metadata, f, indent=4)
+
+    # Save vocabulary
+    vocab = sorted(tfidf.vocabulary_.items(), key=lambda x: x[1])
+    with open(FEATURES_DIR / "vocabulary.txt", "w", encoding="utf-8") as f:
+        for word, idx in vocab:
+            f.write(f"{word}\n")
+
+    # GenSim Word2Vec constraint: only build Word2Vec + BoW for comparison
+    cv = CountVectorizer(max_features=5000)
+    cv.fit(X_train)
+
+    from gensim.models import Word2Vec
+    tokenized_train = [str(text).split() for text in X_train]
+    w2v = Word2Vec(sentences=tokenized_train, vector_size=100, window=5, min_count=2, workers=4, seed=42)
+
+    logger.info("Feature engineering phase completed successfully.")
+
         df = pd.read_csv(input_path)
         logger.info("Loaded preprocessed dataset successfully.")
 
@@ -124,6 +182,7 @@ def main():
     except Exception as e:
         logger.exception("Unexpected error occurred in feature_engineering main().")
         raise
+ implement-pipeline-16979291744340150157
 
 if __name__ == "__main__":
     main()
