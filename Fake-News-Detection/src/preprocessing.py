@@ -17,11 +17,14 @@ from src.config import CLEANED_TRAIN_DATA_PATH, PREPROCESSED_TRAIN_DATA_PATH
 # Initialize logger
 logger = get_logger(__name__)
 
+ fix-pipeline-implementation-12119849575071646015
 # Preload resources
 lemmatizer = WordNetLemmatizer()
 stop_words = set(stopwords.words('english'))
 exceptions = {"not", "no", "nor", "never"}
 stop_words = stop_words - exceptions
+
+ implement-pipeline-16979291744340150157
 
 def set_seeds(seed: int = 42):
     """Sets random seeds for reproducibility."""
