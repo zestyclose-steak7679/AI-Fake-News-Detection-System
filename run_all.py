@@ -1,32 +1,33 @@
-import os
+"""
+run_all.py
+----------
+Reproduces the full pipeline end-to-end: preprocess -> train -> evaluate.
+Run this from the project root:
+
+    python run_all.py
+"""
+
+import subprocess
 import sys
+import os
+
+STEPS = [
+    ("Preprocessing", os.path.join("src", "preprocess.py")),
+    ("Training models", os.path.join("src", "train.py")),
+    ("Evaluating models", os.path.join("src", "evaluate.py")),
+]
+
 
 def main():
-    print("="*50)
-    print("Starting Fake News Detection Pipeline")
-    print("="*50)
+    for label, script in STEPS:
+        print(f"\n{'=' * 60}\n{label}\n{'=' * 60}")
+        result = subprocess.run([sys.executable, script])
+        if result.returncode != 0:
+            print(f"\n{label} failed (exit code {result.returncode}). Stopping.")
+            sys.exit(result.returncode)
 
-    scripts = [
-        ("Preprocessing", "src/preprocess.py"),
-        ("Feature Extraction", "src/features.py"),
-        ("Model Training", "src/train.py"),
-        ("Evaluation", "src/evaluate.py")
-    ]
+    print("\nPipeline complete. Check outputs/ for models, figures, and metrics.")
 
-    for name, script in scripts:
-        print(f"\n[{name}] Running {script}...")
-
-        # Using sys.executable ensures the script uses the same python binary as run_all.py
-        result = os.system(f"{sys.executable} {script}")
-
-        if result != 0:
-            print(f"Error: {script} failed. Halting pipeline.")
-            sys.exit(1)
-
-    print("\n" + "="*50)
-    print("Pipeline completed successfully!")
-    print("Check the 'outputs/' directory for results.")
-    print("="*50)
 
 if __name__ == "__main__":
     main()
