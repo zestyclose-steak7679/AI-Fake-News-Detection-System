@@ -29,7 +29,6 @@ outputs/figures/*
 
 outputs/metrics/*
 !outputs/metrics/.gitkeep
-data/raw/Fake.csv
-data/raw/True.csv
+
 Fake-News-Detection/data/processed/preprocessed_train.csv.tmp
 Fake-News-Detection/data/processed/preprocessed_train.csv.tmp
