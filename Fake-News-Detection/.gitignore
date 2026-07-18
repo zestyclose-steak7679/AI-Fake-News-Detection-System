@@ -9,5 +9,3 @@ outputs/graphs/*.png
 outputs/features/*.txt
 data/processed/*.csv
 !data/processed/.gitkeep
-data/raw/Fake.csv
-data/raw/True.csv
