@@ -1,0 +1,69 @@
+name: Pipeline Verification
+
+on:
+  push:
+    branches: [main, implement-pipeline-*]
+  pull_request:
+    branches: [main, implement-pipeline-*]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Cache NLTK data
+        uses: actions/cache@v4
+        with:
+          path: ~/nltk_data
+          key: nltk-data-${{ runner.os }}
+
+      - name: Download NLTK resources
+        run: python setup_nltk.py
+
+      - name: Verify raw data present and correct size
+        run: |
+          test -f data/raw/Fake.csv || (echo "Fake.csv missing" && exit 1)
+          test -f data/raw/True.csv || (echo "True.csv missing" && exit 1)
+          wc -l data/raw/Fake.csv data/raw/True.csv
+
+      - name: Run data loader
+        run: python src/data_loader.py
+
+      - name: Run EDA
+        run: python src/eda.py
+
+      - name: Run preprocessing
+        run: python src/preprocessing.py
+
+      - name: Run feature engineering
+        run: python src/feature_engineering.py
+
+      - name: Run pipeline verification (hard gate)
+        run: python src/verify_pipeline.py
+        # non-zero exit from verify_pipeline.py fails this step automatically,
+        # which fails the whole job — no self-reporting involved
+
+      - name: Run tests
+        run: pytest tests/ -v
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-outputs
+          path: |
+            outputs/
+            logs/project.log
+          retention-days: 14
