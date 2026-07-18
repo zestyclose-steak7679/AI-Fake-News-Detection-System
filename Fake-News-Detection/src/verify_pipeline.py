@@ -5,13 +5,17 @@ import json
 from pathlib import Path
 
 from src.preprocessing import preprocess
+from src.config import (
+    PREPROCESSED_TRAIN_DATA_PATH,
+    VECTORIZERS_DIR,
+    FEATURES_DIR,
+)
 
 def verify():
-    base_dir = Path("/app/Fake-News-Detection")
-    train_csv = base_dir / "data/processed/preprocessed_train.csv"
-    tfidf_path = base_dir / "models/vectorizers/tfidf.pkl"
-    feature_names_path = base_dir / "outputs/features/feature_names.json"
-    training_config_path = base_dir / "models/vectorizers/training_config.json"
+    train_csv = PREPROCESSED_TRAIN_DATA_PATH
+    tfidf_path = VECTORIZERS_DIR / "tfidf.pkl"
+    feature_names_path = FEATURES_DIR / "feature_names.json"
+    training_config_path = VECTORIZERS_DIR / "training_config.json"
 
     checks_passed = True
 
