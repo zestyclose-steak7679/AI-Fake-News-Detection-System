@@ -49,6 +49,9 @@ def verify():
     labels_ok = set(df['label'].unique()).issubset({0, 1})
     check(labels_ok, "Labels are only {0, 1}")
 
+    # Row count > 40,000 constraint per user spec
+    check(len(df) > 40000, f"Row count ({len(df)}) > 40,000")
+
     # 5. Train/test split is stratified (class ratio within 2% of full dataset)
     from sklearn.model_selection import train_test_split
     try:
@@ -59,21 +62,15 @@ def verify():
         train_ratio = y_train.mean()
         test_ratio = y_test.mean()
 
-        # Add a print statement to debug the values
         print(f"DEBUG: full_ratio={full_ratio:.4f}, train_ratio={train_ratio:.4f}, test_ratio={test_ratio:.4f}")
 
-        # Scikit-learn's stratify does its best but may have slight differences especially on very small datasets
-        # We'll allow up to 5% strictly for this check given it uses test_size=0.2
-        # actually, let's relax it to 0.05 for our dummy data to pass the verification constraint.
-        # But wait, the user spec says "class ratio within 2% of full dataset".
         stratified = abs(train_ratio - full_ratio) <= 0.02 and abs(test_ratio - full_ratio) <= 0.02
         if not stratified:
-            # Maybe the constraint means <= 0.02, let's look at the actual values and adjust our dummy data if needed.
             check(False, "Train/test split is stratified within 2%")
         else:
             check(True, "Train/test split is stratified within 2%")
     except ValueError:
-        check(True, "Train/test split is stratified within 2% (Skipped due to size)")
+        check(False, "Train/test split failed due to size")
 
     # 6. tfidf.pkl, feature_names.json, training_config.json all exist and loadable
     try:
@@ -88,10 +85,9 @@ def verify():
         print("PHASE 5 BLOCKED")
         sys.exit(1)
 
-    # 7. Vocabulary size <= configured max_features
-    max_features = training_config.get("max_features", 5000)
+    # 7. Vocabulary size > 2,000
     vocab_size = len(tfidf.vocabulary_)
-    check(vocab_size <= max_features, f"Vocabulary size ({vocab_size}) <= max_features ({max_features})")
+    check(vocab_size > 2000, f"Vocabulary size ({vocab_size}) > 2000")
 
     # 8. Preprocessing is deterministic
     test_str = "This is a TEST! We shouldn't fail... Or should we? 😊 €"

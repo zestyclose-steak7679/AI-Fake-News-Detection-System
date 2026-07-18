@@ -2,7 +2,7 @@ import pandas as pd
 import random
 import numpy as np
 from src.logger import get_logger
-from src.config import TRAIN_DATA_PATH, CLEANED_TRAIN_DATA_PATH
+from src.config import FAKE_CSV_PATH, TRUE_CSV_PATH, CLEANED_TRAIN_DATA_PATH
 
 logger = get_logger(__name__)
 
@@ -45,6 +45,9 @@ def validate_data(df: pd.DataFrame) -> pd.DataFrame:
     # Strip whitespace to check for purely empty strings
     df = df[df['text'].str.strip() != '']
 
+    # Drop duplicate rows across all columns
+    df = df.drop_duplicates()
+
     logger.info(f"Dropped {initial_shape[0] - df.shape[0]} invalid rows during validation.")
     return df
 
@@ -58,7 +61,22 @@ def save_data(df: pd.DataFrame, output_path: str):
 def main():
     set_seeds()
     logger.info("Starting Data Loading phase...")
-    df = load_data(TRAIN_DATA_PATH)
+    from src.config import FAKE_CSV_PATH, TRUE_CSV_PATH
+    df_fake = load_data(FAKE_CSV_PATH)
+    df_true = load_data(TRUE_CSV_PATH)
+
+    df_fake['label'] = 0
+    df_true['label'] = 1
+
+    df = pd.concat([df_fake, df_true], ignore_index=True)
+
+    if 'title' in df.columns and 'text' in df.columns:
+        df['title'] = df['title'].fillna('')
+        df['text'] = df['text'].fillna('')
+        df['text'] = df['title'] + " " + df['text']
+
+    df = df.sample(frac=1, random_state=42).reset_index(drop=True)
+
     df = validate_data(df)
     save_data(df, CLEANED_TRAIN_DATA_PATH)
     logger.info("Data Loading phase completed successfully.")

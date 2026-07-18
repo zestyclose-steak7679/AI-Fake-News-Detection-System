@@ -9,7 +9,8 @@ RAW_DATA_DIR = DATA_DIR / "raw"
 PROCESSED_DATA_DIR = DATA_DIR / "processed"
 
 # Specific file paths
-TRAIN_DATA_PATH = RAW_DATA_DIR / "train.csv"
+FAKE_CSV_PATH = RAW_DATA_DIR / "Fake.csv"
+TRUE_CSV_PATH = RAW_DATA_DIR / "True.csv"
 CLEANED_TRAIN_DATA_PATH = PROCESSED_DATA_DIR / "cleaned_train.csv"
 PREPROCESSED_TRAIN_DATA_PATH = PROCESSED_DATA_DIR / "preprocessed_train.csv"
 
