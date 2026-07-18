@@ -10,6 +10,54 @@ defaults:
   run:
     working-directory: Fake-News-Detection
 
+env:
+  PYTHONPATH: ${{ github.workspace }}/Fake-News-Detection
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: Fake-News-Detection/requirements.txt
+      - run: pip install -r requirements.txt
+      - uses: actions/cache@v4
+        with: {path: ~/nltk_data, key: nltk-data-${{ runner.os }}}
+      - run: python setup_nltk.py
+      - name: Verify raw data present
+        run: |
+          test -f data/raw/Fake.csv || (echo "Fake.csv missing" && exit 1)
+          test -f data/raw/True.csv || (echo "True.csv missing" && exit 1)
+      - run: python src/data_loader.py
+      - run: python src/eda.py
+      - run: python src/preprocessing.py
+      - run: python src/feature_engineering.py
+      - run: python src/verify_pipeline.py
+      - run: pytest tests/ -v
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pipeline-outputs
+          path: |
+            Fake-News-Detection/outputs/
+            Fake-News-Detection/logs/project.log
+          retention-days: 14
+name: Pipeline Verification
+
+on:
+  push:
+    branches: [main, implement-pipeline-*]
+  pull_request:
+    branches: [main, implement-pipeline-*]
+
+defaults:
+  run:
+    working-directory: Fake-News-Detection
+
 jobs:
   verify:
     runs-on: ubuntu-latest
