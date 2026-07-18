@@ -34,7 +34,11 @@ def main():
         logger.error(f"File not found: {PREPROCESSED_TRAIN_DATA_PATH}")
         raise e
 
-    X = df["clean_text"]
+    # Drop any remaining NaN values to avoid invalid documents
+    df = df.dropna(subset=['clean_text'])
+    df = df[df['clean_text'].astype(str).str.strip() != '']
+
+    X = df["clean_text"].astype(str)
     y = df["label"]
 
     X_train, X_test, y_train, y_test = train_test_split(
