@@ -32,3 +32,8 @@ outputs/metrics/*
 
 Fake-News-Detection/data/processed/preprocessed_train.csv.tmp
 Fake-News-Detection/data/processed/preprocessed_train.csv.tmp
+models/classifiers/*.pkl
+outputs/predictions/*.csv
+outputs/metrics/*.csv
+splits/*.csv
+outputs/training_metadata.json
