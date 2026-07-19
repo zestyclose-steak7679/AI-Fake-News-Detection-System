@@ -105,6 +105,26 @@ def verify():
     leakage = any(token in tfidf.vocabulary_ for token in X_test_tokens_rand)
     check(not leakage, "No leakage in vectorizer vocabulary")
 
+    # 10. Manifest hash checks
+    manifest_path = VECTORIZERS_DIR / "manifest.json"
+    try:
+        import hashlib
+        def sha256_file(path):
+            h = hashlib.sha256()
+            with open(path, "rb") as f:
+                for chunk in iter(lambda: f.read(8192), b""):
+                    h.update(chunk)
+            return h.hexdigest()
+
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+        current_dataset_hash = sha256_file(PREPROCESSED_TRAIN_DATA_PATH)
+        current_vectorizer_hash = sha256_file(tfidf_path)
+        check(current_dataset_hash == manifest["processed_dataset_sha256"], "Dataset matches manifest hash")
+        check(current_vectorizer_hash == manifest["vectorizer_sha256"], "Vectorizer matches manifest hash")
+    except Exception as e:
+        check(False, f"Manifest hash checks failed (Error: {e})")
+
     if checks_passed:
         print("PHASE 5 CLEARED")
     else:

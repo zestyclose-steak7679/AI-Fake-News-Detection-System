@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import joblib
+import json
 from pathlib import Path
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.linear_model import LogisticRegression
@@ -43,18 +44,14 @@ def main():
     tfidf = joblib.load(tfidf_path)
 
     print("Transforming text...")
-    try:
-        X_train = tfidf.transform(X_train_df['clean_text'])
-        X_test = tfidf.transform(X_test_df['clean_text'])
-    except Exception as e:
-        print(f"Warning: Mock Tfidf fallback. Real error: {e}")
-        # Fallback for mock TF-IDF which might not have 'transform' method if we mocked it incorrectly
-        # Actually our last mock used real TfidfVectorizer, so it should work.
-        pass
+    X_train = tfidf.transform(X_train_df['clean_text'].astype(str))
+    X_test = tfidf.transform(X_test_df['clean_text'].astype(str))
 
     CLASSIFIERS_DIR.mkdir(parents=True, exist_ok=True)
     predictions_dir = OUTPUTS_DIR / "predictions"
     predictions_dir.mkdir(parents=True, exist_ok=True)
+    metrics_dir = OUTPUTS_DIR / "metrics"
+    metrics_dir.mkdir(parents=True, exist_ok=True)
 
     models = {
         "LogReg": {
@@ -76,20 +73,25 @@ def main():
     }
 
     test_row_ids = X_test_df['row_id'].values
+    timing_data = {}
 
     for name, config in models.items():
-        print(f"Training {name}...")
-
-        # Baseline
+        print(f"Training {name} baseline...")
         base_model = config["model"]
+
+        t0 = time.time()
         base_model.fit(X_train, y_train)
+        train_time = time.time() - t0
 
         joblib.dump(base_model, CLASSIFIERS_DIR / f"{name}_baseline.pkl")
 
+        t0 = time.time()
         preds = base_model.predict(X_test)
-        try:
+        predict_time = time.time() - t0
+
+        if hasattr(base_model, "predict_proba"):
             probs = base_model.predict_proba(X_test)[:, 1]
-        except AttributeError:
+        else:
             probs = np.zeros(len(preds))
 
         pd.DataFrame({
@@ -99,17 +101,28 @@ def main():
             "predicted_probability": probs
         }).to_csv(predictions_dir / f"{name}_baseline.csv", index=False)
 
-        # Tuned (Using n_jobs=1 to avoid loky unexpected termination error in sandbox)
+        timing_data[f"{name}_baseline"] = {
+            "train_time": train_time,
+            "predict_time": predict_time
+        }
+
+        print(f"Training {name} tuned...")
         grid = GridSearchCV(config["model"], config["param_grid"], cv=3, n_jobs=1)
+
+        t0 = time.time()
         grid.fit(X_train, y_train)
+        train_time_tuned = time.time() - t0
 
         best_model = grid.best_estimator_
         joblib.dump(best_model, CLASSIFIERS_DIR / f"{name}_tuned.pkl")
 
+        t0 = time.time()
         preds_tuned = best_model.predict(X_test)
-        try:
+        predict_time_tuned = time.time() - t0
+
+        if hasattr(best_model, "predict_proba"):
             probs_tuned = best_model.predict_proba(X_test)[:, 1]
-        except AttributeError:
+        else:
             probs_tuned = np.zeros(len(preds_tuned))
 
         pd.DataFrame({
@@ -118,6 +131,14 @@ def main():
             "predicted_label": preds_tuned,
             "predicted_probability": probs_tuned
         }).to_csv(predictions_dir / f"{name}_tuned.csv", index=False)
+
+        timing_data[f"{name}_tuned"] = {
+            "train_time": train_time_tuned,
+            "predict_time": predict_time_tuned
+        }
+
+    with open(metrics_dir / "timing.json", "w") as f:
+        json.dump(timing_data, f, indent=4)
 
     print("Training finished.")
 

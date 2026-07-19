@@ -16,7 +16,6 @@ from src.config import (
     BASE_DIR
 )
 
-# Use dummy logger if experiment_logger is not found
 try:
     from src.experiment_logger import log_metrics
 except ModuleNotFoundError:
@@ -31,6 +30,13 @@ def main():
     # Load original dataset to extract original text for error analysis
     df_orig = pd.read_csv(PREPROCESSED_TRAIN_DATA_PATH)
     df_orig['row_id'] = df_orig.index
+
+    # Load timings
+    timing_path = metrics_dir / "timing.json"
+    timings = {}
+    if timing_path.exists():
+        with open(timing_path, "r") as f:
+            timings = json.load(f)
 
     results = []
     error_dfs = []
@@ -53,14 +59,18 @@ def main():
         rec = recall_score(y_true, y_pred, zero_division=0)
         f1 = f1_score(y_true, y_pred, zero_division=0)
 
+        variant_times = timings.get(model_variant, {})
+        train_time = variant_times.get("train_time", 0.0)
+        predict_time = variant_times.get("predict_time", 0.0)
+
         results.append({
             "Model": model_variant,
             "Accuracy": acc,
             "Precision": prec,
             "Recall": rec,
             "F1": f1,
-            "train_time": 0.0, # Not recorded by train.py currently
-            "predict_time": 0.0,
+            "train_time": train_time,
+            "predict_time": predict_time,
             "model_size_bytes": model_size_bytes
         })
 
