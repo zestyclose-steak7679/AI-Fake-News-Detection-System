@@ -9,3 +9,10 @@ outputs/graphs/*.png
 outputs/features/*.txt
 data/processed/*.csv
 !data/processed/.gitkeep
+
+# Generated models and outputs
+models/classifiers/*.pkl
+outputs/predictions/*.csv
+outputs/metrics/*.csv
+splits/*.csv
+outputs/training_metadata.json
