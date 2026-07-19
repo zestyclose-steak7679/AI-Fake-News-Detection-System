@@ -101,6 +101,21 @@ def main():
     tokenized_train = [str(text).split() for text in X_train]
     w2v = Word2Vec(sentences=tokenized_train, vector_size=100, window=5, min_count=2, workers=4, seed=42)
 
+    import hashlib
+    with open(PREPROCESSED_TRAIN_DATA_PATH, "rb") as f:
+        dataset_hash = hashlib.sha256(f.read()).hexdigest()
+    with open(VECTORIZERS_DIR / "tfidf.pkl", "rb") as f:
+        vectorizer_hash = hashlib.sha256(f.read()).hexdigest()
+
+    manifest = {
+        "processed_dataset_sha256": dataset_hash,
+        "vectorizer_sha256": vectorizer_hash,
+        "row_count": len(df),
+        "vocabulary_size": len(tfidf.vocabulary_)
+    }
+    with open(VECTORIZERS_DIR / "manifest.json", "w") as f:
+        json.dump(manifest, f, indent=4)
+
     logger.info("Feature engineering phase completed successfully.")
 
 if __name__ == "__main__":
