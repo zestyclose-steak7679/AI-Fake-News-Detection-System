@@ -15,27 +15,42 @@ jobs:
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
           cache-dependency-path: Fake-News-Detection/requirements.txt
-      - run: pip install -r requirements.txt
-      - uses: actions/cache@v4
-        with: {path: ~/nltk_data, key: nltk-data-${{ runner.os }}}
-      - run: python setup_nltk.py
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Cache NLTK data
+        uses: actions/cache@v4
+        with:
+          path: ~/nltk_data
+          key: nltk-data-${{ runner.os }}
+
+      - name: Download NLTK resources
+        run: python setup_nltk.py
+
       - name: Regenerate full pipeline
         run: |
           python src/data_loader.py
           python src/eda.py
           python src/preprocessing.py
           python src/feature_engineering.py
+
       - name: Verify pipeline
         run: python src/verify_pipeline.py
+
       - name: Train models
         run: python src/train.py
+
       - name: Evaluate models
         run: python src/evaluate.py
+
       - name: Verify training invariants
         run: |
           python -c "
@@ -55,8 +70,10 @@ jobs:
               assert v['train_time'] > 0 and v['predict_time'] > 0, f'{k} has zero time'
           print('ALL TRAINING INVARIANTS PASSED')
           "
-      - uses: actions/upload-artifact@v4
+
+      - name: Upload artifacts
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: training-outputs
           path: |
